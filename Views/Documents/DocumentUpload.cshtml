@@ -1,0 +1,49 @@
+@model PDFOnlineSignature.Models.Invoice
+@{
+    ViewData["Title"] = "Upload Document";
+}
+<div>
+    <h2><span class="label label-info">Document to Upload</span></h2>
+</div>
+<hr/>
+<form asp-action="Upload" enctype="multipart/form-data">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <input type="hidden" id="documentaction" name="documentaction" value="@ViewBag.DocumentAction"/>
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label class="control-label">Document to be Signed/Verified</label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <p>Please select the file you want to verify/sign.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label class="control-label">PDF Document</label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <input type="file" id="upload" name="upload"/>
+                </div>
+            </div>
+        </div>
+    </div>
+    <nav class="navbar navbar-default">
+        <div class="container-fluid">
+            <p class="navbar-text"><input type="submit" value="Next" class="btn btn-default"/></p>
+            <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Home")'">Cancel</button></p>
+        </div>
+    </nav>
+</form>
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

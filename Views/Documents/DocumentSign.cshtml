@@ -1,0 +1,124 @@
+@model PDFOnlineSignature.Models.Document
+@{
+    ViewData["Title"] = "Sign Document - "+Model.Name;
+}
+<nav class="navbar navbar-default">
+    <div class="container-fluid">
+        <p class="navbar-text"><button class="btn btn-default" id="pdf-prev">Previous</button></p>
+        <p class="navbar-text"><button class="btn btn-default" id="pdf-next">Next</button></p>
+        <form asp-action="Sign" class="navbar-form navbar-right">
+            <input type="hidden" asp-for="Uuid"/>
+            <div class="form-group">
+                <label>Password</label>&nbsp;&nbsp;<input name="password" type="password" class ="form-control"/>
+            </div>
+            <div class="form-group">
+                <label>Description</label>&nbsp;&nbsp;&nbsp;<input class="form-control" name="description" id="description"/>
+            </div>
+            <button type="submit" class="btn btn-success">Sign</button>
+            <button type="button" class="btn btn-danger" onclick="location.href='@Url.Action("Index", "Home")'">Cancel</button>
+        </form>
+    </div>
+</nav>
+<div class="row">
+    <div class="col-md-12">
+        <div id="pdf-loader">Loading document ...</div>
+        <canvas style="width: 100%; height: auto;" id="pdf-canvas"></canvas>
+        <div id="page-loader">Loading page ...</div>
+    </div>
+</div>
+<div class="row">
+    <div class="text-center col-md-12">
+        <h3>
+            <span id="page-count-container">Page <span id="pdf-current-page"></span> of <span id="pdf-total-pages"></span></span>
+        </h3>
+    </div>
+</div>
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+<style> 
+    pdf-canvas {
+    }
+</style>
+<script src="~/lib/pdfjs-dist/build/pdf.min.js"></script>
+<script src="~/lib/pdfjs-dist/build/pdf.worker.min.js"></script>
+<script>
+
+var __PDF_DOC,
+    __CURRENT_PAGE,
+    __TOTAL_PAGES,
+    __PAGE_RENDERING_IN_PROGRESS = 0,
+    __CANVAS = $('#pdf-canvas').get(0),
+    __CANVAS_CTX = __CANVAS.getContext('2d');
+
+// Initialize and load the PDF
+function showPDF(pdf_url) {
+
+    // Show the pdf loader
+    $("#pdf-loader").show();
+
+    PDFJS.getDocument({ url: pdf_url }).then(function(pdf_doc) {
+        __PDF_DOC = pdf_doc;
+        __TOTAL_PAGES = __PDF_DOC.numPages;
+        
+        // Hide the pdf loader and show pdf container in HTML
+        $("#pdf-loader").hide();
+        $("#pdf-contents").show();
+        $("#pdf-total-pages").text(__TOTAL_PAGES);
+
+        // Show the first page
+        showPage(1);
+    }).catch(function(error) {
+        // If error re-show the upload button
+        $("#pdf-loader").hide();
+        $("#upload-button").show();
+        
+        alert(error.message);
+    });;
+}
+
+function showPage(page_no) {
+    __PAGE_RENDERING_IN_PROGRESS = 1;
+    __CURRENT_PAGE = page_no;
+
+    $("#pdf-next, #pdf-prev").attr('disabled', 'disabled');
+    $("#pdf-canvas").hide();
+    $("#page-loader").show();
+    $("#pdf-current-page").text(page_no);
+    
+    __PDF_DOC.getPage(page_no).then(function(page) {
+
+        var scale_required = __CANVAS.width / page.getViewport(1).width;
+        var viewport = page.getViewport(2);
+        __CANVAS.width = viewport.width;
+        __CANVAS.height = viewport.height;
+
+        var renderContext = {
+            canvasContext: __CANVAS_CTX,
+            viewport: viewport
+        };
+
+        page.render(renderContext).then(function() {
+            __PAGE_RENDERING_IN_PROGRESS = 0;
+            $("#pdf-next, #pdf-prev").removeAttr('disabled');
+            $("#pdf-canvas").show();
+            $("#page-loader").hide();
+        });
+    });
+}
+
+$("#pdf-prev").on('click', function() {
+    if(__CURRENT_PAGE != 1)
+        showPage(--__CURRENT_PAGE);
+});
+
+$("#pdf-next").on('click', function() {
+    if(__CURRENT_PAGE != __TOTAL_PAGES)
+        showPage(++__CURRENT_PAGE);
+});
+
+$( document ).ready(function() {
+    var pdf ='@Url.Action("Download", "Documents",new {uuid = Model.Uuid})';
+    showPDF(pdf);
+});
+</script>
+}

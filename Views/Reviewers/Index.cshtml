@@ -1,0 +1,60 @@
+@model IEnumerable<PDFOnlineSignature.Models.Reviewer>
+@{
+    ViewData["Title"] = "Reviewers";
+}
+<div>
+    <h2><span class="label label-default">Reviewers</span></h2>
+    <hr/>
+</div>
+@if(Model.Any())
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>@Html.DisplayNameFor(model => model.Email)</th>
+                <th>@Html.DisplayNameFor(model => model.Name)</th>
+                <th>@Html.DisplayNameFor(model => model.Title)</th>
+                @if ( User.IsInRole("Operator") ) {
+                <th>@Html.DisplayNameFor(model => model.Role)</th>
+                }
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model) {
+            <tr>
+                <td>@Html.DisplayFor(modelItem => item.Email)</td>
+                <td>@Html.DisplayFor(modelItem => item.Name)</td>
+                <td>@Html.DisplayFor(modelItem => item.Title)</td>
+                @if ( User.IsInRole("Operator") ) {
+                <td>@Html.DisplayFor(modelItem => item.Role)</td>
+                }
+                <td>
+                    @if ( item.Certificate == null && User.IsInRole("Operator") ) {
+                        <span><a asp-action="Request" asp-controller="Certificates" asp-route-reviewerUuid="@item.Uuid"><span class="glyphicon glyphicon-certificate"></span></a> |</span>
+                    } else {
+                        <span><a asp-action="DownloadPublicDER" asp-controller="Certificates" asp-route-uuid="@item.Certificate.Uuid"><span class="glyphicon glyphicon-certificate"></a> |</span>
+                        @if (User.IsInRole("Admin")) {
+                        <span><a asp-action="DownloadP12Store" asp-controller="Certificates" asp-route-uuid="@item.Certificate.Uuid"><span class="glyphicon glyphicon-certificate"></a> |</span>
+                        <span><a asp-action="Revoke" asp-controller="Certificates" asp-route-uuid="@item.Certificate.Uuid"><span class="glyphicon glyphicon-ban-circle"></span></a> |</span>
+                        }
+                    }
+                    <span><a asp-action="Edit" asp-route-uuid="@item.Uuid"><span class="glyphicon glyphicon-file"></span></a> |</span>
+                    <span><a asp-action="Delete" asp-route-uuid="@item.Uuid"><span class="glyphicon glyphicon-remove-sign"></span></a></span>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else 
+{
+    <h4>There are no reviewers registered</h4>
+    <hr/>
+}
+<nav class="navbar navbar-default">
+  <div class="container-fluid">
+    <p class="navbar-text"><button type="button" class="btn btn-default" onclick="location.href='@Url.Action("Create", "Reviewers")'">Create New</button></p>
+    <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Home")'">Back</button></p>
+  </div>
+</nav>

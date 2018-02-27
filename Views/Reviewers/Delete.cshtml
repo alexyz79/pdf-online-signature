@@ -1,0 +1,48 @@
+@model PDFOnlineSignature.Models.Reviewer
+@{
+    ViewData["Title"] = "Delete Reviewer";
+}
+@if(ViewBag.AllowDelete==true) 
+{
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="panel panel-danger">
+                <div class="panel-heading">
+                    <h3 class="panel-title">Delete Reviewer: @Model.Name</h3>
+                </div>
+                <div class="panel-body">Are you sure you want to delete this reviewer, this action can't be undone?</div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-12">
+            <form asp-action="Delete">
+                <input type="hidden" asp-for="Uuid" />
+                <nav class="navbar navbar-default">
+                    <div class="container-fluid">
+                        <p class="navbar-text"><input type="submit" value="Delete" class="btn btn-danger" /></p>
+                        <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Reviewers")'">Cancel</button></p>
+                    </div>
+                </nav>
+            </form>        
+        </div>
+    </div>
+}
+else 
+{
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="panel panel-danger">
+                <div class="panel-heading">
+                    <h3 class="panel-title">Delete Currency: @Model.Name</h3>
+                </div>
+                <div class="panel-body">This reviewer can't be deleted, probably there are services assigned.</div>
+            </div>
+        </div>
+    </div>  
+    <nav class="navbar navbar-default">
+        <div class="container-fluid">
+            <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Reviewers")'">Cancel</button></p>
+        </div>
+    </nav>
+}

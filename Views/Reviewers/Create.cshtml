@@ -1,0 +1,76 @@
+@model PDFOnlineSignature.Models.Reviewer
+@{
+    ViewData["Title"] = "Create Reviewer";
+}
+<div>
+    <h2><span class="label label-info">Reviewer</span></h2>
+</div>
+<hr/>
+<form asp-action="Create">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label asp-for="Name" class="control-label"></label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <input asp-for="Name" class="form-control" />
+                    <span asp-validation-for="Name" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-4">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label asp-for="Email" class="control-label"></label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <input asp-for="Email" class="form-control" />
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label asp-for="Title" class="control-label"></label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <input asp-for="Title" class="form-control" />
+                    <span asp-validation-for="Title" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label asp-for="Role" class="control-label"></label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <select asp-for="Role" class ="form-control" asp-items="ViewBag.Roles"></select>
+                    <span asp-validation-for="Role" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <nav class="navbar navbar-default">
+        <div class="container-fluid">
+            <p class="navbar-text"><input type="submit" value="Create" class="btn btn-default"/></p>
+            <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Reviewers")'">Cancel</button></p>
+        </div>
+    </nav>
+</form>
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

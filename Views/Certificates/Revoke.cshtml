@@ -1,0 +1,27 @@
+@model PDFOnlineSignature.Models.Certificate
+@{
+    ViewData["Title"] = "Revoke Reviewer";
+}
+<div class="row">
+    <div class="col-sm-12">
+        <div class="panel panel-danger">
+            <div class="panel-heading">
+                <h3 class="panel-title">Delete Certificate/h3>
+            </div>
+            <div class="panel-body">Are you sure you want to revoke this certificate, this action can't be undone?</div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-sm-12">
+        <form asp-action="Revoke">
+            <input type="hidden" asp-for="Uuid" />
+            <nav class="navbar navbar-default">
+                <div class="container-fluid">
+                    <p class="navbar-text"><input type="submit" value="Revoke" class="btn btn-danger" /></p>
+                    <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Certificates", new { uuid = Model.ReviewerUuid })'">Cancel</button></p>
+                </div>
+            </nav>
+        </form>        
+    </div>
+</div>

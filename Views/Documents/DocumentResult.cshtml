@@ -1,0 +1,40 @@
+@model IEnumerable<PDFOnlineSignature.Core.Trust.SignatureValidation>
+@{
+    ViewData["Title"] = "Document Verification Result";
+}
+<div class="row">
+    <div class="col-sm-12">
+    @if(Model.Any())
+    {
+        <div class="panel panel-success">
+            <div class="panel-heading">
+                <h3 class="panel-title">Your document has been validated</h3>
+            </div>
+            <div class="panel-body">
+                @foreach (var item in Model) 
+                {
+                <p>Signed by @item.SignatureName on @item.SignatureDate. Reason: @item.Reason</p>
+                }
+            </div>
+        </div>
+    } else {
+        <div class="panel panel-danger">
+            <div class="panel-heading">
+                <h3 class="panel-title">Your document has not been validated</h3>
+            </div>
+            <div class="panel-body">
+                <p>Your document as not been signed by anyone on this company.</p>
+            </div>
+        </div>
+    }
+    </div>
+</div>
+<div class="row">
+    <div class="col-sm-12">
+        <nav class="navbar navbar-default">
+            <div class="container-fluid">
+                <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Home")'">Ok</button></p>
+            </div>
+        </nav>
+    </div>
+</div>

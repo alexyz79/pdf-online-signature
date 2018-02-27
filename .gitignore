@@ -1,0 +1,6 @@
+obj/*
+bin/*
+*.db
+wwwroot/lib/*
+CERT_ROOT/*
+.vscode/*

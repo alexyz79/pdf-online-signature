@@ -1,0 +1,153 @@
+@model PDFOnlineSignature.Models.Certificate
+@{
+    ViewData["Title"] = "Issue Certificate";
+}
+<div>
+    <h2><span class="label label-info">Certificate</span><span class="label label-primary">@ViewBag.Request.Reviewer.Name</span></h2>
+</div>
+<hr/>
+<form id="issueform" name="issueform" asp-action="Issue" enctype="multipart/form-data">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <input name="requestId" type="hidden" value="@ViewBag.Request.Uuid"/>
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="panel panel-danger">
+                <div class="panel-heading">
+                    <h3 class="panel-title">Certificate request</h3>
+                </div>
+                <div class="panel-body">
+                    <p>Please insert a strong password and the security code you have sent to your email for us to be able to issue your certificate.</p>
+                    <p>Beware that you should use a very strong password, be negleting this warning you increase the chance of your certificate being hacked.</p>
+                    <p>By accepting this certificate you agree that is legally representing your signature in any company document that you sign using it.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-4">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label class="control-label">Certificate Password</label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <input type="password" id="password" name="password" class="form-control" />
+                    <span id="passwordstrengthinfo"></span>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label class="control-label">Re-enter Password</label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <input type="password" id="passwordcheck" name="passwordcheck" class="form-control" />
+                    <span id="passwordcheckinfo"></span>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        <label class="control-label">Validation Code</label>
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <input type="text" id="code" name="code" class="form-control" />
+                    <span id="codecheckinfo"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <nav class="navbar navbar-default">
+        <div class="container-fluid">
+            <p class="navbar-text"><input type="submit" value="Issue" class="btn btn-default"/></p>
+            <p class="navbar-text"><button type="button" class="btn btn-primary" onclick="location.href='@Url.Action("Index", "Certificates",new {reviewerUuid = ViewBag.Request.Reviewer.Uuid})'">Cancel</button></p>
+        </div>
+    </nav>
+</form>
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        $(document).ready(function () {
+            $("#passwordcheck").keyup(checkPasswordMatch);
+            $("#password").keyup(checkPasswordStrength);
+            $('#issueform').on('submit', function(e) {
+
+                var cancel = false;
+                
+                if ( !$.isNumeric($('#code').val()) )
+                {
+                    $("#codecheckinfo").attr('class', '');
+                    $("#codecheckinfo").addClass("text-danger");
+                    $("#codecheckinfo").html("Please enter a valid code!");
+                    e.preventDefault();
+                    return;                    
+                }
+
+                if ($('#password').val()=='') {
+                    $("#passwordstrengthinfo").attr('class', '');
+                    $("#passwordstrengthinfo").addClass("text-danger");
+                    $("#passwordstrengthinfo").html("Please enter a password!");
+                    e.preventDefault();
+                    return;                    
+                } 
+
+                if ( !checkPasswordMatch() )
+                    e.preventDefault();
+
+                return
+            });
+        });
+
+        function checkPasswordMatch() {
+
+            var password = $("#password").val();
+
+            if ( password == $(this).val() ) {
+                $("#passwordcheckinfo").attr('class', '');
+                $("#passwordcheckinfo").addClass("text-success");
+                $("#passwordcheckinfo").html("Passwords match");
+                return true;
+            }
+
+            $("#passwordcheckinfo").attr('class', '');
+            $("#passwordcheckinfo").addClass("text-danger");
+            $("#passwordcheckinfo").html("Passwords do not match!");
+            
+            return false;     
+        }
+
+        function checkPasswordStrength() {
+
+            var strength = 1;
+            var arr = [/.{5,}/, /[a-z]+/, /[0-9]+/, /[A-Z]+/];
+            jQuery.map(arr, function(regexp) {
+
+            var password = $("#password").val();
+
+            if(password.match(regexp))
+                strength++;
+            });
+
+            if ( strength <= 3 ) {
+                $("#passwordstrengthinfo").attr('class', '');
+                $("#passwordstrengthinfo").addClass("text-danger");
+                $("#passwordstrengthinfo").html("Password too weak!");
+            } else if ( strength == 4 ) {
+                $("#passwordstrengthinfo").attr('class', '');
+                $("#passwordstrengthinfo").addClass("text-warning");
+                $("#passwordstrengthinfo").html("Strong password");
+            } else {
+                $("#passwordstrengthinfo").attr('class', '');
+                $("#passwordstrengthinfo").addClass("text-success");
+                $("#passwordstrengthinfo").html("Very Strong password");
+            }
+        }
+    </script>
+}
