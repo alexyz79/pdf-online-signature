@@ -38,6 +38,7 @@ using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Utilities;
 using Org.BouncyCastle.X509;
+using Org.BouncyCastle.X509.Extension;
 using X509Certificate2 = System.Security.Cryptography.X509Certificates.X509Certificate2;
 using X509KeyStorageFlags = System.Security.Cryptography.X509Certificates.X509KeyStorageFlags;
 using X509ContentType = System.Security.Cryptography.X509Certificates.X509ContentType;
@@ -48,9 +49,9 @@ namespace PDFOnlineSignature.Core {
     public static class SignatureManager {
         static readonly int ContentEstimated = 15000;
 
-        static byte[] CreateMessageDigestHash (Stream data) {
+        static byte[] CreateMessageDigestHash (Stream data, string algorithm) {
 
-            IDigest messageDigest = DigestUtilities.GetDigest ("SHA-256");
+            IDigest messageDigest = DigestUtilities.GetDigest (algorithm);
             byte[] buf = new byte[8192];
             int n;
             while ((n = data.Read (buf, 0, buf.Length)) > 0) {
@@ -115,21 +116,22 @@ namespace PDFOnlineSignature.Core {
             signatureAppearance.Location = signature.Location;
             signatureAppearance.SignDate = DateTime.UtcNow.Date;
 
-            if (signature.Visible) {
+            var pageRect = stamper.Reader.GetPageSize (signature.Page);
 
-                iTextSharp.text.Rectangle rect = stamper.Reader.GetPageSize (signature.Page);
+            var random = new Random();
+            int signatureLeft = random.Next(20,(int) pageRect.Width - 400 - 20 );
+            int signatureTop = random.Next(20,(int) pageRect.Height - 75 - 20 );
 
-                if (signature.RawData != null)
-                    signatureAppearance.Image = iTextSharp.text.Image.GetInstance (signature.RawData);
-
-                signatureAppearance.Layer2Text = signature.CustomText;
-
-                signatureAppearance.SetVisibleSignature (new iTextSharp.text.Rectangle (
-                    signature.Left,
-                    signature.Top,
-                    signature.Left + signature.Width,
-                    signature.Top + signature.Height), signature.Page, null);
-            }
+            var signatureRect = new iTextSharp.text.Rectangle (
+                (float) signatureLeft,
+                (float) signatureTop,
+                (float) signatureLeft + 400,
+                (float) signatureTop + 75);
+            
+            signatureAppearance.Acro6Layers = true;
+            signatureAppearance.Layer2Text = signature.CustomText;
+            signatureAppearance.Render = PdfSignatureAppearance.SignatureRender.Description;
+            signatureAppearance.SetVisibleSignature (signatureRect, signature.Page, null);
 
             return signatureAppearance;
         }
@@ -138,16 +140,23 @@ namespace PDFOnlineSignature.Core {
 
             AsymmetricKeyParameter privateKey,
             X509Certificate[] certificateChain,
-            byte[] hash, byte[] ocsp,
-            PdfSignatureAppearance signatureAppearance) {
+            PdfSignatureAppearance signatureAppearance,
+            string algorithm) {
 
             DateTime timestamp = signatureAppearance.SignDate;
-            PdfPKCS7 pdfPKCS7signature = new PdfPKCS7 (privateKey, certificateChain, null, "SHA-256", false);
+            PdfPKCS7 pdfPKCS7signature = new PdfPKCS7 (privateKey, certificateChain, null, algorithm, false);
+
+            // Get signature hash & certificate chain OCSP
+
+            byte[] hash = CreateMessageDigestHash (signatureAppearance.RangeStream, "SHA-256");
+            byte[] ocsp = GetCertificateChainOCSP (certificateChain);
+            
             byte[] authAttributeBytes = pdfPKCS7signature.GetAuthenticatedAttributeBytes (hash, timestamp, ocsp);
             pdfPKCS7signature.Update (authAttributeBytes, 0, authAttributeBytes.Length);
 
             byte[] encodedSignature = pdfPKCS7signature.GetEncodedPKCS7 (hash, timestamp);
             byte[] paddedSignature = new byte[ContentEstimated];
+
             System.Array.Copy (encodedSignature, 0, paddedSignature, 0, encodedSignature.Length);
 
             if (ContentEstimated + 2 < encodedSignature.Length)
@@ -157,7 +166,52 @@ namespace PDFOnlineSignature.Core {
             dict.Put (PdfName.CONTENTS, new PdfString (paddedSignature).SetHexWriting (true));
             signatureAppearance.Close (dict);
         }
-        
+
+        private static List<String> GetCRLUrls (X509Certificate certificate) {
+
+            var result = new List<string> ();
+
+            var crlDPExtension = certificate.GetExtensionValue (X509Extensions.CrlDistributionPoints);
+
+            if (crlDPExtension != null) {
+                CrlDistPoint crlDistPoints = null;
+                try {
+                    crlDistPoints = CrlDistPoint.GetInstance (X509ExtensionUtilities.FromExtensionValue (crlDPExtension));
+                } catch (IOException) {
+                    // TODO: Log
+                }
+                if (crlDistPoints != null) {
+                    
+                    var distPoints = crlDistPoints.GetDistributionPoints ();
+                    
+                    foreach (var distPoint in distPoints) {
+                        
+                        var dpName = distPoint.DistributionPointName;
+                        var generalNames = (GeneralNames) dpName.Name;
+
+                        if (generalNames != null) {
+                    
+                            var generalNameArray = generalNames.GetNames ();
+
+                            foreach (var generalName in generalNameArray) {
+
+                                if (generalName.TagNo == GeneralName.UniformResourceIdentifier) {
+                                    
+                                    var derString = (IAsn1String) generalName.Name;
+                                    var uri = derString.GetString();
+
+                                    if ( !string.IsNullOrEmpty(uri) && uri.StartsWith("http") ){
+                                        result.Add(uri);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return result;
+        }
 
         public static void Sign (Signature signature, PDFMetadata metadata, string input, string output) {
 
@@ -182,16 +236,17 @@ namespace PDFOnlineSignature.Core {
 
             /* Prepare file input/output */
 
-            PdfReader reader = new PdfReader (input, null);
-            FileStream outputFile = new FileStream (output, FileMode.Create, FileAccess.Write);
-            PdfStamper stamper = PdfStamper.CreateSignature (reader, outputFile, '\0', null, true);
+            var reader = new PdfReader (input, null);
+            var outputFile = new FileStream (output, FileMode.Create, FileAccess.Write);
+            var stamper = PdfStamper.CreateSignature (reader, outputFile, '\0', null, true);
+
             stamper.MoreInfo = metadata.InfoHashtable;
             stamper.XmpMetadata = metadata.XmpMetadata;
 
             /* Create Siganture Appearance */
 
             PdfSignatureAppearance signatureAppearance = CreateSignatureAppearance (stamper, signature);
-            signatureAppearance.SetCrypto (null, certificateChain, null, PdfSignatureAppearance.SELF_SIGNED);
+            signatureAppearance.SetCrypto (privateKey, certificateChain, null, PdfSignatureAppearance.WINCER_SIGNED);
             signatureAppearance.CertificationLevel = PdfSignatureAppearance.CERTIFIED_FORM_FILLING_AND_ANNOTATIONS;
 
             PdfSignature pdfSignature = new PdfSignature (PdfName.ADOBE_PPKLITE, new PdfName ("adbe.pkcs7.detached"));
@@ -207,50 +262,45 @@ namespace PDFOnlineSignature.Core {
             excludedByteRange[PdfName.CONTENTS] = ContentEstimated * 2 + 2;
             signatureAppearance.PreClose (new Hashtable (excludedByteRange));
 
-            // Get signature hash & certificate chain OCSP
-
-            byte[] hash = CreateMessageDigestHash (signatureAppearance.RangeStream);
-            byte[] ocsp = GetCertificateChainOCSP (certificateChain);
-
             // Sign the document
 
-            PKCS7SignDocument(privateKey, certificateChain, hash, ocsp, signatureAppearance);
+            PKCS7SignDocument (privateKey, certificateChain, signatureAppearance, "SHA-256");
 
         }
 
         public static SignatureValidation VerifySignature (X509Certificate certificate, string input) {
 
             PdfReader reader = new PdfReader (input);
-            AcroFields af = reader.AcroFields;
-            ArrayList names = af.GetSignatureNames ();
+            AcroFields fields = reader.AcroFields;
+            ArrayList signatureNames = fields.GetSignatureNames ();
 
-            if (names.Count == 0) {
+            if (signatureNames.Count == 0) {
                 return null;
             }
 
             SignatureValidation result = null;
 
-            foreach (string name in names) {
+            foreach (string signatureName in signatureNames) {
 
-                PdfPKCS7 pk = af.VerifySignature (name);
+                PdfPKCS7 pkcs7 = fields.VerifySignature (signatureName);
 
-                if ( certificate.SerialNumber.CompareTo(pk.SigningCertificate.SerialNumber) == 0 ) {
+                if (certificate.SerialNumber.CompareTo (pkcs7.SigningCertificate.SerialNumber) == 0) {
 
-                    byte[] b1 = certificate.GetSignature();
-                    byte[] b2 = pk.SigningCertificate.GetSignature();
+                    byte[] b1 = certificate.GetSignature ();
+                    byte[] b2 = pkcs7.SigningCertificate.GetSignature ();
 
-                    if ( b1.SequenceEqual(b2) ) {
-                        result = new SignatureValidation();
-                        result.SignatureDate= pk.SignDate;
-                        result.SignatureName = pk.SignName;
-                        result.Reason = pk.Reason;
-                        result.Location = pk.Location;
-                        result.SignatureCoversWholeDocument = af.SignatureCoversWholeDocument (name);
-                        result.Verified = pk.Verify();
+                    if (b1.SequenceEqual (b2)) {
+                        result = new SignatureValidation ();
+                        result.SignatureDate = pkcs7.SignDate;
+                        result.SignatureName = pkcs7.SignName;
+                        result.Reason = pkcs7.Reason;
+                        result.Location = pkcs7.Location;
+                        result.SignatureCoversWholeDocument = fields.SignatureCoversWholeDocument (signatureName);
+                        result.Verified = pkcs7.Verify ();
                         result.CertificateValid = true;
                         return result;
                     }
-                } 
+                }
             }
             return null;
         }

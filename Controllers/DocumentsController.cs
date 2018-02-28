@@ -180,7 +180,7 @@ namespace PDFOnlineSignature.Controllers {
                 Reason = "Document Aproved, Date:" + DateTime.UtcNow.Date,
                 Page = 1,
                 Contact = certificate.Reviewer.Email,
-                CustomText = "Aproved by " + certificate.Reviewer.Name + " - Date:" + DateTime.UtcNow.Date.ToString () + " - " + description,
+                CustomText = "Signed by "+ reviewer.Name + " on " + DateTime.UtcNow.Date.ToString ("dd-MM-yyyy") + " - " + description,
                 Top = 10,
                 Left = 10,
                 Width = 200,
