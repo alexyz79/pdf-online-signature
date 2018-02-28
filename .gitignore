@@ -1,6 +1,8 @@
-obj/*
-bin/*
+obj
+bin
 *.db
 wwwroot/lib/*
 CERT_ROOT/*
 .vscode/*
+appsettings.Development.json
+appsettings.json
