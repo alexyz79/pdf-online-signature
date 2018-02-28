@@ -2,7 +2,8 @@ obj
 bin
 *.db
 wwwroot/lib/*
-CERT_ROOT/*
+CERT_ROOT
+DOCUMENT_ROOT
 .vscode/*
 appsettings.Development.json
 appsettings.json

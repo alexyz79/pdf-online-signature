@@ -21,7 +21,7 @@
 namespace PDFOnlineSignature.Core.Trust {
     public enum StoreFormat {
         PFX,
-        DER,
+        CRT,
         P12Store,
         PEM
     }

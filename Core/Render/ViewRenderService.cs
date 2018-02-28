@@ -78,6 +78,8 @@ namespace PDFOnlineSignature.Core.Render
                     new HtmlHelperOptions()
                 );
  
+                viewContext.ViewData["Hostname"] = Program.Hostname;
+                viewContext.ViewData["Port"] = Program.Port;
                 await viewResult.View.RenderAsync(viewContext);
                 return sw.ToString();
             }

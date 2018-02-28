@@ -161,7 +161,7 @@ namespace PDFOnlineSignature.Core {
 
         public static void Sign (Signature signature, PDFMetadata metadata, string input, string output) {
 
-        if (signature == null)
+            if (signature == null)
                 throw new NullReferenceException ();
 
             if (signature.Store == null)

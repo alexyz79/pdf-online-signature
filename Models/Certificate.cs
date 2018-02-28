@@ -44,5 +44,7 @@ namespace PDFOnlineSignature.Models
         public string SerialNumber { get; set; }
         public string ReviewerUuid { get; set; }
         public Reviewer Reviewer { get; set; }
+        public string ReviewerName { get; set; }
+        public string ReviewerEmail { get; set; }
     }
 }

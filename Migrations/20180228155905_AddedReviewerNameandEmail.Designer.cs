@@ -11,9 +11,10 @@ using System;
 namespace PDFOnlineSignature.Migrations
 {
     [DbContext(typeof(PDFOnlineSignatureContext))]
-    partial class PDFOnlineSignatureContextModelSnapshot : ModelSnapshot
+    [Migration("20180228155905_AddedReviewerNameandEmail")]
+    partial class AddedReviewerNameandEmail
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

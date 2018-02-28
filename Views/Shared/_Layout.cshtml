@@ -46,6 +46,9 @@
             <div id="navbar" class="navbar-collapse collapse">
                 <ul class="nav navbar-nav">
                     <li><a asp-area="" asp-controller="Documents" asp-action="Verify">Verify Document</a></li>
+                    @if (User.IsInRole("Reviewer")) {
+                    <li><a asp-area="" asp-controller="Documents" asp-action="Sign">Sign Document</a></li>
+                    }
                     @if (User.IsInRole("Operator")) {
                     <li class="dropdown">
                         <a href="#" class="dropdown-toggle" data-toggle="dropdown">System<b class="caret"></b></a>                        

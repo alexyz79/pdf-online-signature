@@ -23,28 +23,28 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.AspNetCore.Authorization;
 using PDFOnlineSignature.Core;
 using PDFOnlineSignature.Core.Render;
-using PDFOnlineSignature.Models;
 using PDFOnlineSignature.Core.Trust;
 using PDFOnlineSignature.Core.Trust.Signature;
+using PDFOnlineSignature.Models;
 using Attachment = FluentEmail.Core.Models.Attachment;
 
 namespace PDFOnlineSignature.Controllers {
     public class DocumentsController : Controller {
-        private readonly PDFOnlineSignatureContext _context;
-        private readonly IConfiguration _configuration;
-        private readonly IViewRenderService _renderService;
+        private readonly PDFOnlineSignatureContext DBContext;
+        private readonly IConfiguration Configuration;
+        private readonly IViewRenderService RenderService;
 
-        public DocumentsController (PDFOnlineSignatureContext context, IConfiguration cfg, IViewRenderService viewRenderService) {
-            _context = context;
-            _configuration = cfg;
-            _renderService = viewRenderService;
+        public DocumentsController (PDFOnlineSignatureContext context, IConfiguration configuration, IViewRenderService viewRenderService) {
+            DBContext = context;
+            Configuration = configuration;
+            RenderService = viewRenderService;
         }
 
         [Authorize (Policy = "CanAccessReviewerMethods")]
@@ -62,47 +62,55 @@ namespace PDFOnlineSignature.Controllers {
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Upload (IFormFile upload, string documentaction) {
 
-            var x509cert = HttpContext.Connection.ClientCertificate;
+            Document document = await FileManager.StoreFile (upload);
 
-            var cert = await _context.Certificate.
-            Include (r => r.Reviewer).
-            SingleOrDefaultAsync (r => r.SerialNumber == x509cert.SerialNumber);
-
-            if (cert == null) {
-                return NotFound ();
+            if (document == null) {
+                return View ("InvalidDocument");
             }
-
-            if (cert.ExpireDate < DateTime.Now || cert.Revoked == true) {
-                return RedirectToAction ("CertificateExpired", "Certificates");
-            }
-
-            string uploadFolder = FileManager.DocumentRoot;
-
-            DateTime timestamp = DateTime.UtcNow.Date;
-            Guid unique_id = Guid.NewGuid ();
-
-            using (var stream = new FileStream (uploadFolder + "/" + unique_id.ToString (), FileMode.Create)) {
-                await upload.CopyToAsync (stream);
-            }
-
-            Document document = new Document ();
-            document.Uuid = unique_id.ToString ();
-            document.Name = upload.FileName;
-            document.Size = upload.Length;
-            document.ReviewerUuid = cert.ReviewerUuid;
-            document.Reviewer = cert.Reviewer;
-            document.CreationdDate = timestamp;
-            document.MimeType = "application/pdf";
-            document.Signed = false;
-
-            _context.Add (document);
-            await _context.SaveChangesAsync ();
 
             if (documentaction == "Sign") {
+
+                var x509certificate = HttpContext.Connection.ClientCertificate;
+
+                if (x509certificate == null) {
+                    return View ("OperationNotAllowed");
+                }
+
+                var certificate = await DBContext.Certificate.
+                SingleOrDefaultAsync (r => r.SerialNumber == x509certificate.SerialNumber);
+
+                if (certificate == null) {
+                    return View ("OperationNotAllowed");
+                }
+
+                if (certificate.ExpireDate < DateTime.Now) {
+                    certificate.Revoked = true;
+                    certificate.RevokeDate = DateTime.UtcNow.Date;
+                    DBContext.Certificate.Update (certificate);
+                    await DBContext.SaveChangesAsync ();
+                }
+
+                if (certificate.ExpireDate < DateTime.Now || certificate.Revoked == true) {
+                    return RedirectToAction ("CertificateExpired", "Certificates");
+                }
+
+                document.ReviewerUuid = certificate.ReviewerUuid;
+                document.Reviewer = certificate.Reviewer;
+                document.Signed = false;
+
+                DBContext.Add (document);
+                await DBContext.SaveChangesAsync ();
+
                 return View ("DocumentSign", document);
+            } else if (documentaction == "Verify") {
+
+                DBContext.Add (document);
+                await DBContext.SaveChangesAsync ();
+
+                return RedirectToAction ("VerifyDocument", new { uuid = document.Uuid });
             }
 
-            return RedirectToAction ("VerifyDocument", new { uuid = document.Uuid });
+            return View ("OperationNotAllowed");
         }
 
         [HttpPost]
@@ -110,83 +118,104 @@ namespace PDFOnlineSignature.Controllers {
         [Authorize (Policy = "CanAccessReviewerMethods")]
         public async Task<IActionResult> Sign (string uuid, string password, string description) {
 
-            if (string.IsNullOrEmpty (uuid)) {
-                return NotFound ();
+            if (string.IsNullOrEmpty (uuid) || string.IsNullOrEmpty (password)) {
+                return View ("OperationNotAllowed");
             }
 
-            var document = await _context.Document.
-            SingleOrDefaultAsync (m => m.Uuid == uuid);
+            var document = await DBContext.Document
+                .SingleOrDefaultAsync (m => m.Uuid == uuid);
 
             if (document == null) {
                 return NotFound ();
             }
 
             if (document.MimeType != "application/pdf") {
-                return View ("InvalidFile");
+                return View ("InvalidDocument");
             }
 
-            var x509cert = HttpContext.Connection.ClientCertificate;
+            var x509certificate = HttpContext.Connection.ClientCertificate;
 
-            var cert = await _context.Certificate.
-            Include (r => r.Reviewer).
-            SingleOrDefaultAsync (r => r.SerialNumber == x509cert.SerialNumber);
-
-            if (cert == null || cert.ReviewerUuid != document.ReviewerUuid) {
-                return NotFound ();
+            if (x509certificate == null) {
+                return View ("OperationNotAllowed");
             }
 
-            if (cert.ExpireDate < DateTime.Now || cert.Revoked == true) {
+            var certificate = await DBContext.Certificate
+                .SingleOrDefaultAsync (r => r.SerialNumber == x509certificate.SerialNumber);
+
+            if (certificate == null || certificate.ReviewerUuid != document.ReviewerUuid) {
+                return View ("OperationNotAllowed");
+            }
+
+            if (certificate.ExpireDate < DateTime.Now.Date) {
+                certificate.Revoked = true;
+                certificate.RevokeDate = DateTime.UtcNow.Date;
+                DBContext.Certificate.Update (certificate);
+                await DBContext.SaveChangesAsync ();
+            }
+
+            if (certificate.Revoked == true) {
                 return RedirectToAction ("CertificateExpired", "Certificates");
             }
 
-            string uploadFolder = FileManager.DocumentRoot;
+            var pkcs12store = TrustManager.LoadPkcs12Store (certificate.Uuid, password, CertificateType.ReviewerCertificate);
 
-            var metadata = new PDFMetadata ();
-            metadata.Title = "PDF Signed Document" + document.Name;
-            metadata.Author = cert.Reviewer.Name;
-            metadata.Creator = cert.Reviewer.Name;
-            metadata.Producer = cert.Reviewer.Name;
-            metadata.Keywords = "UUID:" + document.Uuid;
-            metadata.Subject = "Signed Document";
+            if (pkcs12store == null) {
+                return View ("OperationNotAllowed");
+            }
 
-            var signature = new Signature ();
-            signature.Store = TrustManager.LoadP12Store (cert.Uuid, password, CertificateType.ReviewerCertificate);
-            signature.Reason = "Document Aproved, Date:" + DateTime.UtcNow.Date;
-            signature.Page = 1;
-            signature.Contact = cert.Reviewer.Email;
-            signature.CustomText = "Aproved by " + cert.Reviewer.Name + " - Date:" + DateTime.UtcNow.Date.ToString () + " - " + description;
-            signature.Top = 10;
-            signature.Left = 10;
-            signature.Width = 200;
-            signature.Height = 50;
-            signature.Multi = false;
-            signature.Visible = true;
+            var reviewer = await DBContext.Reviewer
+                .SingleOrDefaultAsync (r => r.Uuid == certificate.ReviewerUuid);
+
+            var metadata = new PDFMetadata () {
+                Title = "PDF Signed Document" + document.Name,
+                Author = certificate.Reviewer.Name,
+                Creator = certificate.Reviewer.Name,
+                Producer = certificate.Reviewer.Name,
+                Keywords = "UUID:" + document.Uuid,
+                Subject = "Signed Document"
+            };
+
+            var signature = new Signature () {
+                Store = pkcs12store,
+                Reason = "Document Aproved, Date:" + DateTime.UtcNow.Date,
+                Page = 1,
+                Contact = certificate.Reviewer.Email,
+                CustomText = "Aproved by " + certificate.Reviewer.Name + " - Date:" + DateTime.UtcNow.Date.ToString () + " - " + description,
+                Top = 10,
+                Left = 10,
+                Width = 200,
+                Height = 50,                
+
+                Multi = false,
+                Visible = true
+            };
 
             SignatureManager.Sign (
                 signature,
                 metadata,
-                uploadFolder + "/" + document.Uuid,
-                uploadFolder + "/" + document.Uuid + "-signed");
+                FileManager.DocumentRoot + "/" + document.Uuid,
+                FileManager.DocumentRoot + "/" + document.Uuid + "-signed");
 
             document.SignatureDate = DateTime.UtcNow.Date;
-            _context.Document.Update (document);
-            await _context.SaveChangesAsync ();
+            DBContext.Document.Update (document);
+            await DBContext.SaveChangesAsync ();
 
-            var message = await _renderService.RenderToStringAsync ("Email/DocumentSigned", document);
+            var message = await RenderService
+                .RenderToStringAsync ("Email/DocumentSigned", document);
             var attachments = new List<Attachment> ();
 
             attachments.Add (
                 await EmailManager.LoadAttachment (
-                    uploadFolder + "/" + document.Uuid + "-signed",
-                    document.Name,
+                    FileManager.DocumentRoot + "/" + document.Uuid + "-signed",
+                    "Signed by " + reviewer.Name + "-" + document.Name,
                     document.MimeType));
 
             attachments.Add (
                 await EmailManager.LoadAttachment (
                     TrustManager.CertificatePath (
-                        cert.Uuid,
+                        certificate.Uuid,
                         CertificateType.ReviewerCertificate,
-                        StoreFormat.DER),
+                        StoreFormat.CRT),
                     "public.crt",
                     "application/x-x509-ca-cert"));
 
@@ -195,14 +224,14 @@ namespace PDFOnlineSignature.Controllers {
                     TrustManager.CertificatePath (
                         "root",
                         CertificateType.AuthorityCertificate,
-                        StoreFormat.DER),
+                        StoreFormat.CRT),
                     "authority.crt",
                     "application/x-x509-ca-cert"));
 
             var response = await EmailManager.SendEmailHTML (
                 message,
                 EmailManager.Sender,
-                cert.Reviewer.Email,
+                certificate.Reviewer.Email,
                 "Your signed document is ready",
                 attachments
             );
@@ -219,72 +248,58 @@ namespace PDFOnlineSignature.Controllers {
                 return NotFound ();
             }
 
-            var document = await _context.Document.
-            SingleOrDefaultAsync (m => m.Uuid == uuid);
+            var document = await DBContext.Document
+                .SingleOrDefaultAsync (m => m.Uuid == uuid);
 
             if (document == null) {
                 return NotFound ();
             }
 
-            string uploadFolder = FileManager.DocumentRoot;
+            var certificates = await DBContext.Certificate.ToListAsync ();
+            var signatureValidations = new List<SignatureValidation> ();
 
-            var certs = _context.Certificate.
-            Include (r => r.Reviewer);
+            foreach (var certificate in certificates) {
 
-            var validReviews = new List<SignatureValidation> ();
-
-            foreach (var cert in certs) {
-
-                var x509cert = TrustManager.LoadX509Certificate (
-                    cert.Uuid,
+                var x509certificate = TrustManager.LoadX509Certificate (
+                    certificate.Uuid,
                     CertificateType.ReviewerCertificate);
 
-                SignatureValidation result = SignatureManager.VerifySignature (x509cert, uploadFolder + "/" + document.Uuid);
+                SignatureValidation result = SignatureManager.VerifySignature (x509certificate, FileManager.DocumentRoot + "/" + document.Uuid);
 
                 if (result != null) {
 
-                    result.SignatureName = cert.Reviewer.Name;
-                    if (cert.Revoked == true && result.SignatureDate < cert.RevokeDate) {
-                        validReviews.Add (result);
-                    } else if (cert.Revoked != true && result.SignatureDate < cert.ExpireDate) {
-                        validReviews.Add (result);
+                    result.SignatureName = certificate.ReviewerName;
+                    result.Certificate = certificate;
+                    if (certificate.Revoked == true && result.SignatureDate > certificate.RevokeDate) {
+                        result.SignatureRevoked = true;
+                    } else if (certificate.Revoked != true && result.SignatureDate > certificate.ExpireDate) {
+                        result.SignatureExpired = true;
                     }
+                    signatureValidations.Add (result);
                 }
             }
 
-            return View ("DocumentResult", validReviews);
+            DBContext.Document.Remove(document);
+            DBContext.SaveChanges();
+
+            return View ("DocumentResult", signatureValidations);
         }
 
         [Authorize (Policy = "CanAccessReviewerMethods")]
         public async Task<IActionResult> Download (string uuid) {
-           
-            string uploadFolder = FileManager.DocumentRoot;
 
             if (string.IsNullOrEmpty (uuid)) {
                 return NotFound ();
             }
 
-            var document = await _context.Document.
-            SingleOrDefaultAsync (m => m.Uuid == uuid);
+            var document = await DBContext.Document
+                .SingleOrDefaultAsync (m => m.Uuid == uuid);
 
             if (document == null) {
                 return NotFound ();
             }
 
-            string path = uploadFolder + "/" + document.Uuid;
-
-            if (document.Signed == true) {
-                path += "-signed";
-            }
-
-            var memory = new MemoryStream ();
-
-            using (var stream = new FileStream (path, FileMode.Open)) {
-                await stream.CopyToAsync (memory);
-            }
-
-            memory.Position = 0;
-
+            var memory = await FileManager.GetFile(document);
             return File (memory, document.MimeType, document.Name);
         }
     }

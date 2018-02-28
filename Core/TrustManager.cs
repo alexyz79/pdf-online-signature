@@ -21,6 +21,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Security;
 using Microsoft.Extensions.Configuration;
 using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.X509;
@@ -36,6 +37,7 @@ using Org.BouncyCastle.X509;
 using X509Certificate2 = System.Security.Cryptography.X509Certificates.X509Certificate2;
 using X509KeyStorageFlags = System.Security.Cryptography.X509Certificates.X509KeyStorageFlags;
 using X509ContentType = System.Security.Cryptography.X509Certificates.X509ContentType;
+using X509Chain = System.Security.Cryptography.X509Certificates.X509Chain;
 using PDFOnlineSignature.Core.Trust;
 
 namespace PDFOnlineSignature.Core {
@@ -43,7 +45,7 @@ namespace PDFOnlineSignature.Core {
         static IConfiguration Configuration = null;
         static string RootPath {
             get {
-                return Configuration.GetValue<string> ("Trust:Root", "CERT_ROOT");
+                return Configuration.GetValue<string> ("TrustManager:Root", "CERT_ROOT");
             }
         }
         static string UserPrivateCertificatesPath {
@@ -111,34 +113,23 @@ namespace PDFOnlineSignature.Core {
 
         private static X509Certificate2 SetupRootCertificate () {
 
-            var certPassword = Configuration.GetValue<string> ("Trust:Password", "default password");
-            var defaultYears = Configuration.GetValue<int> ("Trust:Years", 50);
+            var certPassword = Configuration.GetValue<string> ("TrustManager:Password", "default password");
+   
+            IssuerDN = new DistinguishedName () {
+                CommonName = Configuration.GetValue<string> ("TrustManager:CommonName", "Certificate Authority Root"),
+                Organization = Configuration.GetValue<string> ("TrustManager:Org", "Your Organization"),
+                OrganizationalUnit = Configuration.GetValue<string> ("TrustManager:OrgUnit", "Your Organizational Unit"),
+                Locality = Configuration.GetValue<string> ("TrustManager:Locality", "Your Locality"),
+                Country = Configuration.GetValue<string> ("TrustManager:Country", "Your Country"),
+                State = Configuration.GetValue<string> ("TrustManager:State", "Your State"),
+                Email = Configuration.GetValue<string> ("TrustManager:Email", "Your Email")
+            };
 
-            if (!File.Exists (AuthorityPublicCertificatesPath + "root.pfx")) {
+            if (!File.Exists (AuthorityPrivateCertificatesPath + "root.pfx")) {
 
                 DateTime now = DateTime.UtcNow.Date;
-
-                IssuerDN = new DistinguishedName ();
-                IssuerDN.CommonName = Configuration.
-                GetValue<string> ("Trust:CommonName", "Certificate Authority Root");
-
-                IssuerDN.Organization = Configuration.
-                GetValue<string> ("Trust:Org", "Your Organization");
-
-                IssuerDN.OrganizationalUnit = Configuration.
-                GetValue<string> ("Trust:OrgUnit", "Your Organizational Unit");
-
-                IssuerDN.Locality = Configuration.
-                GetValue<string> ("Trust:Locality", "Your Locality");
-
-                IssuerDN.Country = Configuration.
-                GetValue<string> ("Trust:Country", "Your Country");
-
-                IssuerDN.State = Configuration.
-                GetValue<string> ("Trust:State", "Your State");
-
-                IssuerDN.Email = Configuration.
-                GetValue<string> ("Trust:Email", "Your Email");
+        
+                var defaultYears = Configuration.GetValue<int> ("TrustManager:Years", 50);
 
                 return IssueCertificate (
                     "root",
@@ -180,8 +171,8 @@ namespace PDFOnlineSignature.Core {
             }
 
             switch (format) {
-                case StoreFormat.DER:
-                    filename = publicOutputPath + basename + ".der";
+                case StoreFormat.CRT:
+                    filename = publicOutputPath + basename + ".crt";
                     break;
                 case StoreFormat.P12Store:
                     filename = privateOutputPath + basename + ".p12";
@@ -276,12 +267,19 @@ namespace PDFOnlineSignature.Core {
 
             /* Certificate Extended Key Usages */
             if (certtype != CertificateType.AuthorityCertificate) {
-                var extendedUsages = new KeyPurposeID[] {
-                KeyPurposeID.IdKPServerAuth,
-                KeyPurposeID.IdKPClientAuth,
-                KeyPurposeID.IdKPEmailProtection,
-                KeyPurposeID.IdKPTimeStamping
-                };
+
+                KeyPurposeID[] extendedUsages = null;
+
+                if (certtype == CertificateType.ServerCertificate) {
+                    extendedUsages = new KeyPurposeID[] {
+                    KeyPurposeID.IdKPServerAuth,
+                    };
+                } else {
+                    extendedUsages = new KeyPurposeID[] {
+                        KeyPurposeID.IdKPClientAuth,
+                        KeyPurposeID.IdKPEmailProtection,
+                    };
+                }
 
                 certificateGenerator.AddExtension (
                     X509Extensions.ExtendedKeyUsage.Id, false, new ExtendedKeyUsage (extendedUsages));
@@ -354,7 +352,7 @@ namespace PDFOnlineSignature.Core {
                     X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
 
             File.WriteAllBytes (privateOutputPath + basename + ".pfx", convertedCertificate.Export (X509ContentType.Pfx, password));
-            File.WriteAllBytes (publicOutputPath + basename + ".der", convertedCertificate.Export (X509ContentType.Cert, password));
+            File.WriteAllBytes (publicOutputPath + basename + ".crt", convertedCertificate.Export (X509ContentType.Cert, password));
 
             return convertedCertificate;
         }
@@ -380,8 +378,8 @@ namespace PDFOnlineSignature.Core {
             }
 
             switch (format) {
-                case StoreFormat.DER:
-                    filename = publicOutputPath + basename + ".der";
+                case StoreFormat.CRT:
+                    filename = publicOutputPath + basename + ".crt";
                     break;
                 case StoreFormat.P12Store:
                     filename = privateOutputPath + basename + ".p12";
@@ -396,7 +394,7 @@ namespace PDFOnlineSignature.Core {
             return filename;
         }
 
-        internal static Pkcs12Store LoadP12Store (string basename, string password, CertificateType certtype) {
+        internal static Pkcs12Store LoadPkcs12Store (string basename, string password, CertificateType certtype) {
             string privateOutputPath = null;
 
             if (certtype == CertificateType.AuthorityCertificate) {
@@ -409,45 +407,37 @@ namespace PDFOnlineSignature.Core {
 
             var store = new Pkcs12Store ();
 
-            Stream stream = new FileStream (
+            using (Stream stream = new FileStream (
                 privateOutputPath + basename + ".p12",
                 FileMode.Open,
-                FileAccess.Read);
+                FileAccess.Read)) {
 
-            store.Load (stream, password.ToCharArray ());
+                try
+                {
+                    store.Load (stream, password.ToCharArray ());
+                }
+                catch (System.Exception)
+                {
+                    store = null;
+                }
 
-            return store;
-        }
+                stream.Close();
 
-        internal static Pkcs12Store LoadP12Store (string basename, CertificateType certtype) {
-            string publicOutputPath = null;
-
-            if (certtype == CertificateType.AuthorityCertificate) {
-                publicOutputPath = AuthorityPublicCertificatesPath;
-            } else if (certtype == CertificateType.ServerCertificate) {
-                publicOutputPath = ServerPublicCertificatesPath;
-            } else {
-                publicOutputPath = UserPublicCertificatesPath;
             }
-
-            var store = new Pkcs12Store ();
-
-            Stream stream = new FileStream (
-                publicOutputPath + basename + ".der",
-                FileMode.Open,
-                FileAccess.Read);
-
-            store.Load (stream, null);
 
             return store;
         }
 
         internal static X509Certificate LoadX509Certificate (string basename, CertificateType certtype) {
 
-            X509Certificate2 certificate2 = LoadCertificate(basename, null, certtype, StoreFormat.DER);
-            var parser = new X509CertificateParser();
-            var certificate = parser.ReadCertificate(certificate2.GetRawCertData());
+            X509Certificate2 certificate2 = LoadCertificate (basename, null, certtype, StoreFormat.CRT);
+            var parser = new X509CertificateParser ();
+            var certificate = parser.ReadCertificate (certificate2.GetRawCertData ());
             return certificate;
+        }
+
+        internal static bool ValidateCertificate (X509Certificate2 certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) {
+            return true;
         }
     }
 }

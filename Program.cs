@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Org.BouncyCastle.Asn1.X509;
@@ -81,7 +82,7 @@ namespace PDFOnlineSignature
                                                                 Configuration["WebServer:ServerCertificate:Password"],
                                                                 CertificateType.ServerCertificate,
                                                                 StoreFormat.PFX);
-            }
+            }            
 
             if ( !TrustManager
                         .CertificateAvailable(
@@ -114,25 +115,24 @@ namespace PDFOnlineSignature
                                                         StoreFormat.PFX);
             }
 
-           var host = build
+            var kestrelopts = new KestrelServerOptions();
+            var adapterOptions = new HttpsConnectionAdapterOptions();
+
+            adapterOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+            adapterOptions.ClientCertificateValidation = TrustManager.ValidateCertificate;
+            adapterOptions.SslProtocols = SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12;
+            adapterOptions.ServerCertificate = Program.ServerCertificate;
+            
+            var host = build
                 .UseKestrel(options => {
                     options.Listen(IPAddress.Any, Port, 
                                         listenOptions => {
-                                            var httpsConnectionAdapterOptions = new HttpsConnectionAdapterOptions()
-                                            {
-                                                ClientCertificateMode = ClientCertificateMode.AllowCertificate,
-                                                ClientCertificateValidation = delegate(X509Certificate2 certificate,X509Chain chain, SslPolicyErrors sslPolicyErrors){ 
-                                                    return true; 
-                                                },
-                                                SslProtocols = SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12 ,
-                                                ServerCertificate = Program.ServerCertificate
-                                            };
-                                            listenOptions.UseHttps(httpsConnectionAdapterOptions);
+                                            listenOptions
+                                            .UseHttps(adapterOptions);
                                         });
                                 }
                 ) 
                 .UseStartup<Startup>()
-                .UseIISIntegration()
                 .Build();
                 host.Run();
         }

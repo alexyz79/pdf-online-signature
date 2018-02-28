@@ -19,6 +19,7 @@
   OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 using System;
+using PDFOnlineSignature.Models;
 
 namespace PDFOnlineSignature.Core.Trust
 {
@@ -31,6 +32,9 @@ namespace PDFOnlineSignature.Core.Trust
         public string SignatureName { get; set; }
         public string Reason { get; set; }
         public string Location { get; set; }
+        public Certificate Certificate { get; set; }
+        public bool SignatureRevoked { get; set; }
+        public bool SignatureExpired { get; set; }
         public SignatureValidation() {
             
         }

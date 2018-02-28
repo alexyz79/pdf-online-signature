@@ -88,7 +88,7 @@ namespace PDFOnlineSignature.Core.Trust.Authentication
                                                             dbcert.Uuid, 
                                                             null, 
                                                             CertificateType.ReviewerCertificate,
-                                                            StoreFormat.DER );
+                                                            StoreFormat.CRT );
 
                 if ( x509cert.Thumbprint == certificate.Thumbprint ) {
 
